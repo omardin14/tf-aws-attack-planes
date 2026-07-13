@@ -1,0 +1,43 @@
+output "account_id" {
+  value = local.account_id
+}
+
+output "region" {
+  value = local.region
+}
+
+output "log_bucket_id" {
+  value = aws_s3_bucket.logs.id
+}
+
+output "log_bucket_arn" {
+  value = aws_s3_bucket.logs.arn
+}
+
+output "cloudtrail_log_group_name" {
+  value = aws_cloudwatch_log_group.trail.name
+}
+
+output "cloudtrail_log_group_arn" {
+  value = aws_cloudwatch_log_group.trail.arn
+}
+
+output "glue_database_name" {
+  value = aws_glue_catalog_database.audit.name
+}
+
+output "athena_workgroup_name" {
+  value = aws_athena_workgroup.investigations.name
+}
+
+output "athena_results_location" {
+  value = "s3://${aws_s3_bucket.logs.id}/${local.athena_prefix}/"
+}
+
+output "sns_topic_arn" {
+  value = aws_sns_topic.alerts.arn
+}
+
+output "guardduty_detector_id" {
+  value = aws_guardduty_detector.this.id
+}
