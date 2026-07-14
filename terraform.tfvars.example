@@ -1,0 +1,30 @@
+# terraform.tfvars.example
+#
+# Copy this to terraform.tfvars and edit — `*.tfvars` is gitignored so your real
+# values never get committed:
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# Every variable has a default, so a bare `terraform apply` also works. The one
+# you most likely want to set is `alert_email` (otherwise you only see alarms in
+# the console, no email).
+#
+# WARNING: applying this stands up a deliberately-attackable estate and fires a
+# simulated attack against your own account. Use a throwaway sandbox account only.
+
+# Home region for the trail. Keep us-east-1 so global-service events (IAM, STS)
+# land here.
+region = "us-east-1"
+
+# Prefix applied to every named resource so the whole demo is easy to find and
+# tear down.
+name_prefix = "atkplane"
+
+# Email subscribed to the SNS alert topic. Leave empty ("") to skip the
+# subscription — you'll still see alarms in the console, just no email.
+# Confirm the subscription in your inbox after apply.
+alert_email = "you@example.com"
+
+# If true, the attack Lambda is invoked automatically on apply. Set false to
+# stand up the estate and fire the attack yourself later.
+auto_fire = true
