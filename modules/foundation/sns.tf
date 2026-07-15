@@ -9,6 +9,14 @@ resource "aws_sns_topic_subscription" "email" {
   topic_arn = aws_sns_topic.alerts.arn
   protocol  = "email"
   endpoint  = var.alert_email
+
+  # Email subscriptions can't be confirmed by Terraform - you click the link in
+  # the email. The default wait is 1 minute, which is easy to miss, leaving state
+  # stuck at pending_confirmation=true (the subscription still works once you
+  # confirm, but Terraform thinks it's pending). Give yourself 10 minutes to
+  # click. Terraform returns as soon as you confirm, so this is a ceiling, not a
+  # fixed delay.
+  confirmation_timeout_in_minutes = 10
 }
 
 # Allow CloudWatch Alarms and EventBridge to publish to the topic.

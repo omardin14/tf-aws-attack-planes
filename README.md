@@ -63,6 +63,21 @@ On apply:
 > CloudTrail → CloudWatch Logs delivery lags **~1–2 minutes**, so the alarms go to ALARM a
 > couple of minutes *after* the attack Lambda runs. That delay is expected, not a bug.
 
+> [!NOTE]
+> **Email alerts and the "Deleted" subscription.** AWS requires you to confirm an email
+> subscription by clicking the link it sends — Terraform can't do this for you. Two things
+> follow from that:
+> - After each `apply` you must click the confirmation link. `apply` now waits up to 10
+>   minutes for you (see `confirmation_timeout_in_minutes`) and returns as soon as you click.
+>   If you miss the window the subscription still works once confirmed, but Terraform state
+>   shows `pending_confirmation = true`.
+> - Every `terraform destroy` unsubscribes the email. If you're iterating with
+>   destroy/re-apply, the SNS console shows the torn-down subscription as a `Deleted` row
+>   (a temporary tombstone, keeping its last "Confirmed" status) and the next `apply` creates
+>   a fresh one to re-confirm. That churn is expected, not the scenario deleting anything —
+>   nothing in the attack/response code touches SNS. Leave `alert_email = ""` while iterating
+>   (alarms are still visible in the CloudWatch console) and set it only for a run you keep.
+
 ### Investigate
 
 Open the Athena workgroup from the `athena_workgroup` output (or the `athena_console_url`
@@ -129,7 +144,7 @@ the log bucket so teardown doesn't choke on the objects CloudTrail wrote.
 |---|---|---|
 | `region` | `us-east-1` | Home region. Keep `us-east-1` so global IAM/STS events land here. |
 | `name_prefix` | `atkplane` | Prefix on every resource — makes the demo easy to find and tear down. |
-| `alert_email` | `""` | Subscribe an email to the SNS alert topic (confirm the subscription). |
+| `alert_email` | `""` | Subscribe an email to the SNS alert topic. You must confirm it via the emailed link (see the email-alerts note under Usage). |
 | `auto_fire` | `true` | Fire the attack on apply. Set `false` to fire it manually later. |
 | `enable_guardduty` | `false` | Stand up the GuardDuty detector + its EventBridge→SNS/quarantine wiring. Off by default because **GuardDuty is not on the AWS Free Tier**. See the note below. |
 
