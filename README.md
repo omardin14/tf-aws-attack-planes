@@ -106,7 +106,15 @@ checkout with live state. You can also point it anywhere with `--function-name`/
 and `--region`. Set `-var 'auto_fire=false'` on apply to stand up the estate without firing,
 then drive it entirely from the script.
 
-Under the hood it's just:
+> [!NOTE]
+> **Why a plain re-invoke fails, and how the script fixes it.** The respond pipeline quarantines
+> the leaked user by attaching `AWSDenyAll` to it — so the *first* run succeeds, but the leaked
+> key that signs the attack is then denied everything, and every later run gets `AccessDenied`.
+> The script clears that quarantine (detaches `AWSDenyAll` from the leaked user) before each run,
+> which is what makes the scenario repeatable; this needs `iam:DetachUserPolicy` on your caller.
+> Pass `--no-reset` to leave the quarantine in place and observe the denied state instead.
+
+Under the hood each run is just: clear the quarantine, then
 `aws lambda invoke --function-name "$(terraform output -raw attack_function_name)" /dev/null`
 
 ### Exercise GuardDuty directly
