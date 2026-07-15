@@ -28,6 +28,16 @@ output "leaked_user_name" {
   value       = module.scenario_01.leaked_user_name
 }
 
+output "attack_function_name" {
+  description = "The attack Lambda. Invoke it (e.g. via scripts/simulate-attack.sh) to re-run the scenario on demand."
+  value       = module.scenario_01.attack_function_name
+}
+
+output "region" {
+  description = "Region the estate is deployed in (where you invoke the attack Lambda)."
+  value       = var.region
+}
+
 output "athena_console_url" {
   description = "Deep link to the Athena query editor for this workgroup."
   value       = "https://${var.region}.console.aws.amazon.com/athena/home?region=${var.region}#/query-editor"

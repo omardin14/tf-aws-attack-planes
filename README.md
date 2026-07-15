@@ -28,6 +28,8 @@ investigate it — so you can run the whole "what is this user doing?" loop your
 │       ├── detect.tf        # (2) detect:      CloudTrail metric-filter alarms + GuardDuty→EventBridge
 │       ├── respond.tf       # (2) respond:     quarantine Lambda (deny-all) + destroy-time cleanup
 │       └── investigate.tf   # (3) investigate: Glue table (partition projection) + saved Athena queries
+└── scripts/
+    └── simulate-attack.sh   # fire the attack Lambda on demand, N times (see "Re-run the attack")
 ```
 
 Every scenario module follows the same three-part shape: **trigger the attack · detect it ·
@@ -75,9 +77,22 @@ deep link) and run the saved queries, in order:
 
 ### Re-run the attack
 
-`aws lambda invoke --function-name $(terraform output -raw leaked_user_name | sed 's/-leaked-ci-user/-attack/') /dev/null`
-— or set `-var 'auto_fire=false'` to stand up the estate without firing, and invoke the
-attack Lambda yourself when you're ready.
+Use the helper script to fire the attack Lambda on demand — as many times as you like — so
+you can regenerate the signal without re-applying:
+
+```bash
+./scripts/simulate-attack.sh              # fire once
+./scripts/simulate-attack.sh -n 5 -i 30   # fire 5 times, 30s apart
+./scripts/simulate-attack.sh --help       # all options
+```
+
+It discovers the function name and region from `terraform output`, so a bare run works from a
+checkout with live state. You can also point it anywhere with `--function-name`/`--name-prefix`
+and `--region`. Set `-var 'auto_fire=false'` on apply to stand up the estate without firing,
+then drive it entirely from the script.
+
+Under the hood it's just:
+`aws lambda invoke --function-name "$(terraform output -raw attack_function_name)" /dev/null`
 
 ### Exercise GuardDuty directly
 
