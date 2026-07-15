@@ -74,8 +74,13 @@ resource "aws_cloudwatch_metric_alarm" "iam_persistence" {
 # ---------------------------------------------------------------------------
 # GuardDuty findings -> EventBridge -> SNS (notify) + quarantine Lambda (respond).
 # The quarantine target lives in respond.tf.
+#
+# Gated on enable_guardduty: GuardDuty is not on the AWS Free Tier. When off, the
+# metric-filter alarms above are the whole detection story.
 # ---------------------------------------------------------------------------
 resource "aws_cloudwatch_event_rule" "guardduty_findings" {
+  count = var.enable_guardduty ? 1 : 0
+
   name        = "${var.name_prefix}-guardduty-findings"
   description = "Route GuardDuty findings to alerting and automated quarantine."
   event_pattern = jsonencode({
@@ -85,7 +90,9 @@ resource "aws_cloudwatch_event_rule" "guardduty_findings" {
 }
 
 resource "aws_cloudwatch_event_target" "guardduty_to_sns" {
-  rule      = aws_cloudwatch_event_rule.guardduty_findings.name
+  count = var.enable_guardduty ? 1 : 0
+
+  rule      = aws_cloudwatch_event_rule.guardduty_findings[0].name
   target_id = "notify-sns"
   arn       = var.sns_topic_arn
 }

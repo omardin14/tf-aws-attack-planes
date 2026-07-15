@@ -11,15 +11,17 @@
 module "foundation" {
   source = "./modules/foundation"
 
-  name_prefix = var.name_prefix
-  alert_email = var.alert_email
+  name_prefix      = var.name_prefix
+  alert_email      = var.alert_email
+  enable_guardduty = var.enable_guardduty
 }
 
 module "scenario_01" {
   source = "./modules/scenario-01-account-takeover"
 
-  name_prefix = var.name_prefix
-  auto_fire   = var.auto_fire
+  name_prefix      = var.name_prefix
+  auto_fire        = var.auto_fire
+  enable_guardduty = var.enable_guardduty
 
   # Wiring from the shared foundation.
   account_id                = module.foundation.account_id

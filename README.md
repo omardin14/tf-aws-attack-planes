@@ -28,6 +28,8 @@ investigate it — so you can run the whole "what is this user doing?" loop your
 │       ├── detect.tf        # (2) detect:      CloudTrail metric-filter alarms + GuardDuty→EventBridge
 │       ├── respond.tf       # (2) respond:     quarantine Lambda (deny-all) + destroy-time cleanup
 │       └── investigate.tf   # (3) investigate: Glue table (partition projection) + saved Athena queries
+└── scripts/
+    └── simulate-attack.sh   # fire the attack Lambda on demand, N times (see "Re-run the attack")
 ```
 
 Every scenario module follows the same three-part shape: **trigger the attack · detect it ·
@@ -75,11 +77,27 @@ deep link) and run the saved queries, in order:
 
 ### Re-run the attack
 
-`aws lambda invoke --function-name $(terraform output -raw leaked_user_name | sed 's/-leaked-ci-user/-attack/') /dev/null`
-— or set `-var 'auto_fire=false'` to stand up the estate without firing, and invoke the
-attack Lambda yourself when you're ready.
+Use the helper script to fire the attack Lambda on demand — as many times as you like — so
+you can regenerate the signal without re-applying:
+
+```bash
+./scripts/simulate-attack.sh              # fire once
+./scripts/simulate-attack.sh -n 5 -i 30   # fire 5 times, 30s apart
+./scripts/simulate-attack.sh --help       # all options
+```
+
+It discovers the function name and region from `terraform output`, so a bare run works from a
+checkout with live state. You can also point it anywhere with `--function-name`/`--name-prefix`
+and `--region`. Set `-var 'auto_fire=false'` on apply to stand up the estate without firing,
+then drive it entirely from the script.
+
+Under the hood it's just:
+`aws lambda invoke --function-name "$(terraform output -raw attack_function_name)" /dev/null`
 
 ### Exercise GuardDuty directly
+
+Requires `enable_guardduty = true` (otherwise `guardduty_detector_id` is empty and there's
+no detector to sample against).
 
 ```bash
 aws guardduty create-sample-findings \
@@ -113,3 +131,14 @@ the log bucket so teardown doesn't choke on the objects CloudTrail wrote.
 | `name_prefix` | `atkplane` | Prefix on every resource — makes the demo easy to find and tear down. |
 | `alert_email` | `""` | Subscribe an email to the SNS alert topic (confirm the subscription). |
 | `auto_fire` | `true` | Fire the attack on apply. Set `false` to fire it manually later. |
+| `enable_guardduty` | `false` | Stand up the GuardDuty detector + its EventBridge→SNS/quarantine wiring. Off by default because **GuardDuty is not on the AWS Free Tier**. See the note below. |
+
+> [!NOTE]
+> **GuardDuty and the Free Tier.** GuardDuty is a paid service, so `enable_guardduty`
+> defaults to `false` and the demo runs Free-Tier-friendly out of the box. With it off you
+> still get the whole **trigger → detect → investigate** loop: the CloudTrail metric-filter
+> alarms fire off the attack's own signal, and all the Athena queries work. What you lose is
+> the GuardDuty-driven **auto-quarantine** — the detector, its EventBridge rule, and the
+> sample-finding step are skipped. The quarantine Lambda is still created, so you can invoke
+> it by hand to demo the response step. Set `enable_guardduty = true` on a sandbox account
+> where you're happy to pay for GuardDuty to exercise the full detect→respond pipeline.

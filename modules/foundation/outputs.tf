@@ -39,5 +39,6 @@ output "sns_topic_arn" {
 }
 
 output "guardduty_detector_id" {
-  value = aws_guardduty_detector.this.id
+  # Empty string when GuardDuty is disabled; the attack Lambda treats "" as "skip".
+  value = var.enable_guardduty ? aws_guardduty_detector.this[0].id : ""
 }

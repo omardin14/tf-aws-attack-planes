@@ -48,18 +48,25 @@ resource "aws_lambda_function" "quarantine" {
   }
 }
 
+# EventBridge -> quarantine wiring only exists when GuardDuty does. The Lambda
+# itself is always created, so you can still invoke it by hand to demo the
+# response step even with GuardDuty off.
 resource "aws_cloudwatch_event_target" "guardduty_to_quarantine" {
-  rule      = aws_cloudwatch_event_rule.guardduty_findings.name
+  count = var.enable_guardduty ? 1 : 0
+
+  rule      = aws_cloudwatch_event_rule.guardduty_findings[0].name
   target_id = "quarantine"
   arn       = aws_lambda_function.quarantine.arn
 }
 
 resource "aws_lambda_permission" "allow_eventbridge" {
+  count = var.enable_guardduty ? 1 : 0
+
   statement_id  = "AllowEventBridgeInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.quarantine.function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.guardduty_findings.arn
+  source_arn    = aws_cloudwatch_event_rule.guardduty_findings[0].arn
 }
 
 # ---------------------------------------------------------------------------
