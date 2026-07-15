@@ -8,3 +8,9 @@ variable "alert_email" {
   type        = string
   default     = ""
 }
+
+variable "enable_guardduty" {
+  description = "Create the GuardDuty detector. GuardDuty is not on the AWS Free Tier, so this is off by default."
+  type        = bool
+  default     = false
+}

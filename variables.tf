@@ -21,3 +21,9 @@ variable "auto_fire" {
   type        = bool
   default     = true
 }
+
+variable "enable_guardduty" {
+  description = "If true, stand up the GuardDuty detector and wire its findings into the detect/respond pipeline (EventBridge -> SNS + quarantine Lambda). GuardDuty is NOT available on the AWS Free Tier, so this defaults to false. When false, the metric-filter alarms still fire off the attack's own CloudTrail signal; only the GuardDuty-driven auto-quarantine is skipped."
+  type        = bool
+  default     = false
+}

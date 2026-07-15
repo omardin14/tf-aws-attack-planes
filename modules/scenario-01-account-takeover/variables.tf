@@ -9,6 +9,12 @@ variable "auto_fire" {
   default     = true
 }
 
+variable "enable_guardduty" {
+  description = "Wire GuardDuty findings into the detect/respond pipeline. When false, the metric-filter alarms still fire but the GuardDuty EventBridge rule and auto-quarantine are skipped."
+  type        = bool
+  default     = false
+}
+
 variable "account_id" {
   type = string
 }

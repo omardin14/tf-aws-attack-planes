@@ -28,3 +28,15 @@ alert_email = "you@example.com"
 # If true, the attack Lambda is invoked automatically on apply. Set false to
 # stand up the estate and fire the attack yourself later.
 auto_fire = true
+
+# Stand up the GuardDuty detector and wire its findings into the detect/respond
+# pipeline (EventBridge -> SNS + auto-quarantine Lambda).
+#
+# GuardDuty is NOT part of the AWS Free Tier, so this defaults to false. Set it
+# to true only on an account where you're happy to pay for GuardDuty.
+#
+# With it false you still get the full trigger -> detect -> investigate loop: the
+# CloudTrail metric-filter alarms fire off the attack's own signal. Only the
+# GuardDuty-driven auto-quarantine is skipped (you can still invoke the quarantine
+# Lambda by hand to demo the response step).
+enable_guardduty = false

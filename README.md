@@ -81,6 +81,9 @@ attack Lambda yourself when you're ready.
 
 ### Exercise GuardDuty directly
 
+Requires `enable_guardduty = true` (otherwise `guardduty_detector_id` is empty and there's
+no detector to sample against).
+
 ```bash
 aws guardduty create-sample-findings \
   --detector-id "$(terraform output -raw guardduty_detector_id)" \
@@ -113,3 +116,14 @@ the log bucket so teardown doesn't choke on the objects CloudTrail wrote.
 | `name_prefix` | `atkplane` | Prefix on every resource — makes the demo easy to find and tear down. |
 | `alert_email` | `""` | Subscribe an email to the SNS alert topic (confirm the subscription). |
 | `auto_fire` | `true` | Fire the attack on apply. Set `false` to fire it manually later. |
+| `enable_guardduty` | `false` | Stand up the GuardDuty detector + its EventBridge→SNS/quarantine wiring. Off by default because **GuardDuty is not on the AWS Free Tier**. See the note below. |
+
+> [!NOTE]
+> **GuardDuty and the Free Tier.** GuardDuty is a paid service, so `enable_guardduty`
+> defaults to `false` and the demo runs Free-Tier-friendly out of the box. With it off you
+> still get the whole **trigger → detect → investigate** loop: the CloudTrail metric-filter
+> alarms fire off the attack's own signal, and all the Athena queries work. What you lose is
+> the GuardDuty-driven **auto-quarantine** — the detector, its EventBridge rule, and the
+> sample-finding step are skipped. The quarantine Lambda is still created, so you can invoke
+> it by hand to demo the response step. Set `enable_guardduty = true` on a sandbox account
+> where you're happy to pay for GuardDuty to exercise the full detect→respond pipeline.
