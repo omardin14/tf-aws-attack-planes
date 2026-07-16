@@ -27,3 +27,15 @@ variable "enable_guardduty" {
   type        = bool
   default     = false
 }
+
+variable "scenario_01_enabled" {
+  description = "Deploy Scenario 1 (account takeover / control plane). On by default - it's the reference scenario and cheap (no compute)."
+  type        = bool
+  default     = true
+}
+
+variable "scenario_02_enabled" {
+  description = "Deploy Scenario 2 (compromised workload / network plane). Off by default because it stands up a VPC + a t3.micro EC2 instance (small ongoing cost, unlike the Free-Tier-shaped Scenario 1)."
+  type        = bool
+  default     = false
+}

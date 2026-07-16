@@ -40,3 +40,16 @@ auto_fire = true
 # GuardDuty-driven auto-quarantine is skipped (you can still invoke the quarantine
 # Lambda by hand to demo the response step).
 enable_guardduty = false
+
+# Which scenarios (planes) to deploy. Each is a self-contained slice wired to the
+# shared foundation.
+#
+# Scenario 1 (account takeover / control plane) is on by default: it's the
+# reference scenario and cheap - no compute, just IAM + CloudTrail alarms.
+scenario_01_enabled = true
+
+# Scenario 2 (compromised workload / network plane) is OFF by default because it
+# stands up a VPC + a t3.micro EC2 instance (a small ongoing cost, unlike the
+# Free-Tier-shaped Scenario 1). Set it to true on a sandbox to exercise the
+# VPC Flow Logs egress/lateral-movement loop.
+scenario_02_enabled = false
