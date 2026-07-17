@@ -193,7 +193,7 @@ quarantine. Pass `--no-reset` to leave it isolated and observe the cut-off state
 reset needs `ec2:ModifyInstanceAttribute` + `ec2:DescribeInstances` on your caller.
 
 > [!NOTE]
-> **The finding to know by heart:** `UnauthorizedAccess:EC2/InstanceCredentialExfiltration.OutsideAWS`.
+> **The finding to know by heart:** `UnauthorizedAccess:IAMUser/InstanceCredentialExfiltration.OutsideAWS`.
 > It fires when credentials issued to an EC2 instance role are used from an IP *outside* AWS. With
 > `enable_guardduty = true` the attack emits a sample of it to drive the isolation Lambda; there is
 > essentially no legitimate reason for your instance's role to be driving the AWS API from
