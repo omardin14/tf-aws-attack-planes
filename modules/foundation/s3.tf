@@ -73,6 +73,58 @@ data "aws_iam_policy_document" "trail_bucket" {
       values   = ["arn:aws:cloudtrail:${local.region}:${local.account_id}:trail/${local.trail_name}"]
     }
   }
+
+  # VPC Flow Logs (Scenario 2, network plane) deliver to this same bucket under
+  # vpc-flow-logs/AWSLogs/<acct>/vpcflowlogs/... The delivery principal and the
+  # write prefix both differ from CloudTrail's, so flow logs need their own
+  # statements. Left unconditional: harmless when Scenario 2 isn't deployed (the
+  # principal simply never calls), and a bucket can carry only ONE policy.
+  statement {
+    sid    = "AWSVPCFlowLogsAclCheck"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
+    actions   = ["s3:GetBucketAcl"]
+    resources = [aws_s3_bucket.logs.arn]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:logs:${local.region}:${local.account_id}:*"]
+    }
+  }
+
+  statement {
+    sid    = "AWSVPCFlowLogsWrite"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.logs.arn}/vpc-flow-logs/AWSLogs/${local.account_id}/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:logs:${local.region}:${local.account_id}:*"]
+    }
+  }
 }
 
 resource "aws_s3_bucket_policy" "trail" {

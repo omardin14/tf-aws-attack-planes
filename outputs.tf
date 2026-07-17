@@ -24,13 +24,40 @@ output "guardduty_detector_id" {
 }
 
 output "leaked_user_name" {
-  description = "The deliberately-leaked IAM user. This is the principal you investigate."
-  value       = module.scenario_01.leaked_user_name
+  description = "Scenario 1: the deliberately-leaked IAM user. This is the principal you investigate. null when scenario_01_enabled = false."
+  value       = one(module.scenario_01[*].leaked_user_name)
 }
 
 output "attack_function_name" {
-  description = "The attack Lambda. Invoke it (e.g. via scripts/simulate-attack.sh) to re-run the scenario on demand."
-  value       = module.scenario_01.attack_function_name
+  description = "Scenario 1 attack Lambda. Invoke it (e.g. via scripts/simulate-attack.sh) to re-run the scenario on demand. null when scenario_01_enabled = false."
+  value       = one(module.scenario_01[*].attack_function_name)
+}
+
+# --- Scenario 2 (compromised workload / network plane) -----------------------
+
+output "scenario_02_instance_id" {
+  description = "Scenario 2: the compromised EC2 instance. null when scenario_02_enabled = false."
+  value       = one(module.scenario_02[*].instance_id)
+}
+
+output "scenario_02_instance_sg_id" {
+  description = "Scenario 2: the instance's baseline security group. simulate-attack.sh restores this before each re-run to undo any isolation."
+  value       = one(module.scenario_02[*].instance_security_group_id)
+}
+
+output "scenario_02_attack_function_name" {
+  description = "Scenario 2 attack Lambda. Invoke it (e.g. via scripts/simulate-attack.sh -s 2) to re-run the scenario on demand."
+  value       = one(module.scenario_02[*].attack_function_name)
+}
+
+output "scenario_02_flow_logs_table" {
+  description = "Scenario 2: Glue table of VPC Flow Logs to query in Athena."
+  value       = one(module.scenario_02[*].flow_logs_table)
+}
+
+output "scenario_02_alarm_names" {
+  description = "Scenario 2: the egress metric-filter alarm that trips on exfiltration."
+  value       = one(module.scenario_02[*].alarm_names)
 }
 
 output "region" {
