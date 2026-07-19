@@ -14,11 +14,15 @@ resource "aws_route53_resolver_firewall_domain_list" "blocked" {
   count = var.enable_dns_firewall ? 1 : 0
 
   name = "${var.name_prefix}-s3-blocked-domains"
+  # Resolver Firewall stores domains as FQDNs (trailing dot), so we write them
+  # that way to match - otherwise every plan shows a perpetual no-op diff as
+  # AWS's normalized "example." fights the config's "example". trimsuffix keeps
+  # it correct even if a caller passes a domain that already ends in a dot.
   domains = [
-    var.beacon_domain,
-    "*.${var.beacon_domain}",
-    var.tunnel_domain,
-    "*.${var.tunnel_domain}",
+    "${trimsuffix(var.beacon_domain, ".")}.",
+    "*.${trimsuffix(var.beacon_domain, ".")}.",
+    "${trimsuffix(var.tunnel_domain, ".")}.",
+    "*.${trimsuffix(var.tunnel_domain, ".")}.",
   ]
 
   tags = { Name = "${var.name_prefix}-s3-blocked-domains" }
