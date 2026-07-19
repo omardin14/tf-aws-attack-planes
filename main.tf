@@ -67,3 +67,30 @@ module "scenario_02" {
   sns_topic_arn         = module.foundation.sns_topic_arn
   guardduty_detector_id = module.foundation.guardduty_detector_id
 }
+
+module "scenario_03" {
+  source = "./modules/scenario-03-dns-exfil"
+  count  = var.scenario_03_enabled ? 1 : 0
+
+  name_prefix         = var.name_prefix
+  auto_fire           = var.auto_fire
+  enable_guardduty    = var.enable_guardduty
+  enable_dns_firewall = var.enable_dns_firewall
+
+  # Wiring from the shared foundation. Scenario 3 delivers Route 53 Resolver
+  # query logs to the shared bucket (needs its ARN) and runs a scheduled Athena
+  # hunter (needs the Athena results location). Creating the Resolver query-log
+  # config validates the bucket policy, so this whole module is sequenced AFTER
+  # the foundation (bucket + its policy) via depends_on.
+  account_id              = module.foundation.account_id
+  region                  = var.region
+  log_bucket_id           = module.foundation.log_bucket_id
+  log_bucket_arn          = module.foundation.log_bucket_arn
+  glue_database_name      = module.foundation.glue_database_name
+  athena_workgroup_name   = module.foundation.athena_workgroup_name
+  athena_results_location = module.foundation.athena_results_location
+  sns_topic_arn           = module.foundation.sns_topic_arn
+  guardduty_detector_id   = module.foundation.guardduty_detector_id
+
+  depends_on = [module.foundation]
+}

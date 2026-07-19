@@ -125,6 +125,46 @@ data "aws_iam_policy_document" "trail_bucket" {
       values   = ["arn:aws:logs:${local.region}:${local.account_id}:*"]
     }
   }
+
+  # Route 53 Resolver query logs (Scenario 3, DNS plane) deliver to this same
+  # bucket under route53-resolver/AWSLogs/<acct>/vpcdnsquerylogs/<vpc-id>/... They
+  # need their OWN statements: the Flow-Logs AclCheck above pins aws:SourceArn to
+  # arn:aws:logs:*, which Resolver's source ARN (arn:aws:route53resolver:*) never
+  # matches. And - unlike Flow Logs - AWS's documented Resolver-log policy does
+  # NOT require the bucket-owner-full-control ACL, so requiring it here would DENY
+  # delivery. Left unconditional beyond SourceAccount: harmless when Scenario 3
+  # isn't deployed, and a bucket can carry only ONE policy.
+  statement {
+    sid    = "AWSResolverQueryLogsAclCheck"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
+    actions   = ["s3:GetBucketAcl"]
+    resources = [aws_s3_bucket.logs.arn]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+
+  statement {
+    sid    = "AWSResolverQueryLogsWrite"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.logs.arn}/route53-resolver/AWSLogs/${local.account_id}/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
 }
 
 resource "aws_s3_bucket_policy" "trail" {

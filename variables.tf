@@ -39,3 +39,15 @@ variable "scenario_02_enabled" {
   type        = bool
   default     = false
 }
+
+variable "scenario_03_enabled" {
+  description = "Deploy Scenario 3 (DNS exfil / DNS plane). Off by default because it stands up a VPC + a t3.micro EC2 instance plus Route 53 Resolver query logging (small ongoing cost, like Scenario 2)."
+  type        = bool
+  default     = false
+}
+
+variable "enable_dns_firewall" {
+  description = "Scenario 3 only: also stand up the Route 53 Resolver DNS Firewall 'prevent' control (BLOCK the demo beacon/tunnel domains). Off by default so the demo is detect-only; a blocked lookup is still logged, so the hunter/queries keep working."
+  type        = bool
+  default     = false
+}
