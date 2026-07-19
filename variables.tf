@@ -31,7 +31,7 @@ variable "enable_guardduty" {
 variable "scenario_01_enabled" {
   description = "Deploy Scenario 1 (account takeover / control plane). On by default - it's the reference scenario and cheap (no compute)."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "scenario_02_enabled" {

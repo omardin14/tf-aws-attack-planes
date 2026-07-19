@@ -131,7 +131,7 @@ def handler(event, context):
         try:
             boto3.client("guardduty", region_name=REGION).create_sample_findings(
                 DetectorId=detector,
-                FindingTypes=["UnauthorizedAccess:EC2/InstanceCredentialExfiltration.OutsideAWS"],
+                FindingTypes=["UnauthorizedAccess:IAMUser/InstanceCredentialExfiltration.OutsideAWS"],
             )
             print("[+] guardduty sample finding generated")
         except ClientError as exc:
