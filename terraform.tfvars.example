@@ -53,3 +53,15 @@ scenario_01_enabled = true
 # Free-Tier-shaped Scenario 1). Set it to true on a sandbox to exercise the
 # VPC Flow Logs egress/lateral-movement loop.
 scenario_02_enabled = false
+
+# Scenario 3 (DNS exfil / DNS plane) is OFF by default for the same reason: it
+# stands up a VPC + a t3.micro EC2 instance plus Route 53 Resolver query logging.
+# Set it to true on a sandbox to exercise the DNS beacon/tunnelling loop caught by
+# the scheduled Athena hunter.
+scenario_03_enabled = false
+
+# Scenario 3 only: also stand up the Route 53 Resolver DNS Firewall 'prevent'
+# control, which BLOCKs the demo beacon/tunnel domains. Off by default so the demo
+# is detect-only. A blocked lookup is still logged, so the hunter/queries keep
+# working either way - the point is the query is now refused, not just observed.
+enable_dns_firewall = false

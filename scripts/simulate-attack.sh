@@ -21,6 +21,11 @@
 #     before each run this script restores the instance's baseline security group
 #     (undo the isolation) so egress can flow and SSM can reach the box again.
 #
+#   Scenario 3 (DNS exfil / DNS plane):
+#     Drives an on-box script via SSM -> DGA NXDOMAIN beacon + long-label TXT
+#     tunnelling in Route 53 Resolver query logs. There is no automated responder
+#     for this plane, so there is nothing to reset before a run.
+#
 # Pass --no-reset to skip the reset and observe the quarantined/isolated state.
 #
 # By default it discovers the function name and region from `terraform output`,
@@ -33,7 +38,7 @@
 #   ./scripts/simulate-attack.sh [options]
 #
 # Options:
-#   -s, --scenario N           Scenario to fire: 1 or 2 (default: 1)
+#   -s, --scenario N           Scenario to fire: 1, 2, or 3 (default: 1)
 #   -f, --function-name NAME   Attack Lambda to invoke (default: from terraform output)
 #   -p, --name-prefix PREFIX   Derive the name (matches var.name_prefix)
 #   -r, --region REGION        AWS region (default: terraform output region, else $AWS_REGION)
@@ -126,7 +131,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "$SCENARIO" == "1" || "$SCENARIO" == "2" ]] || die "--scenario must be 1 or 2"
+[[ "$SCENARIO" == "1" || "$SCENARIO" == "2" || "$SCENARIO" == "3" ]] || die "--scenario must be 1, 2, or 3"
 [[ "$COUNT" =~ ^[0-9]+$ && "$COUNT" -ge 1 ]] || die "--count must be a positive integer"
 [[ "$INTERVAL" =~ ^[0-9]+$ ]] || die "--interval must be a non-negative integer"
 
@@ -141,9 +146,12 @@ tf_output() {
 if [[ "$SCENARIO" == "1" ]]; then
   FN_OUTPUT="attack_function_name"
   FN_SUFFIX="-attack"
-else
+elif [[ "$SCENARIO" == "2" ]]; then
   FN_OUTPUT="scenario_02_attack_function_name"
   FN_SUFFIX="-s2-attack"
+else
+  FN_OUTPUT="scenario_03_attack_function_name"
+  FN_SUFFIX="-s3-attack"
 fi
 
 # An explicit --name-prefix wins over discovery.
@@ -234,16 +242,19 @@ reset_isolation() {
 reset_before_run() {
   if [[ "$SCENARIO" == "1" ]]; then
     reset_quarantine
-  else
+  elif [[ "$SCENARIO" == "2" ]]; then
     reset_isolation
   fi
+  # Scenario 3 has no automated responder, so there is nothing to reset.
 }
 
 # --- fire ----------------------------------------------------------------------
 echo ">> scenario      : $SCENARIO"
 echo ">> attack Lambda : $FUNCTION_NAME"
 echo ">> region        : $REGION"
-if [[ "$RESET" -eq 1 ]]; then
+if [[ "$SCENARIO" == "3" ]]; then
+  echo ">> reset         : n/a (scenario 3 has no responder)"
+elif [[ "$RESET" -eq 1 ]]; then
   if [[ "$SCENARIO" == "1" ]]; then
     echo ">> reset         : un-quarantine ${LEAKED_USER:+($LEAKED_USER) }before each run"
   else
@@ -294,8 +305,11 @@ done
 
 if [[ "$SCENARIO" == "1" ]]; then
   echo "Done. Give CloudTrail ~1-2 min to deliver to CloudWatch Logs, then investigate:"
-else
+elif [[ "$SCENARIO" == "2" ]]; then
   echo "Done. Give VPC Flow Logs ~1-2 min to deliver, then investigate:"
+else
+  echo "Done. Give Route 53 Resolver query logs a few min to deliver (the scheduled hunter"
+  echo "catches the pattern on its next pass), then investigate:"
 fi
 ATHENA_URL="$(tf_output athena_console_url)"
 if [[ -n "$ATHENA_URL" ]]; then

@@ -28,19 +28,25 @@ investigate it — so you can run the whole "what is this user doing?" loop your
 │   │   ├── detect.tf        # (2) detect:      CloudTrail metric-filter alarms + GuardDuty→EventBridge
 │   │   ├── respond.tf       # (2) respond:     quarantine Lambda (deny-all) + destroy-time cleanup
 │   │   └── investigate.tf   # (3) investigate: Glue table (partition projection) + saved Athena queries
-│   └── scenario-02-compromised-workload/  # the network-plane egress/lateral-movement attack
-│       ├── network.tf       # (0) target:      VPC + public subnet + IMDSv2 EC2 + VPC Flow Logs (→ S3 + CWL)
-│       ├── attack.tf        # (1) trigger:     attack Lambda drives the box via SSM (exfil + REJECT probes)
-│       ├── detect.tf        # (2) detect:      egress-bytes metric-filter alarm + GuardDuty→EventBridge
-│       ├── respond.tf       # (2) respond:     isolation Lambda (swap to a no-rules SG)
-│       └── investigate.tf   # (3) investigate: Glue table over Flow Logs + saved Athena queries
+│   ├── scenario-02-compromised-workload/  # the network-plane egress/lateral-movement attack
+│   │   ├── network.tf       # (0) target:      VPC + public subnet + IMDSv2 EC2 + VPC Flow Logs (→ S3 + CWL)
+│   │   ├── attack.tf        # (1) trigger:     attack Lambda drives the box via SSM (exfil + REJECT probes)
+│   │   ├── detect.tf        # (2) detect:      egress-bytes metric-filter alarm + GuardDuty→EventBridge
+│   │   ├── respond.tf       # (2) respond:     isolation Lambda (swap to a no-rules SG)
+│   │   └── investigate.tf   # (3) investigate: Glue table over Flow Logs + saved Athena queries
+│   └── scenario-03-dns-exfil/             # the DNS-plane beacon/tunnelling attack
+│       ├── network.tf       # (0) target:      VPC + IMDSv2 EC2 + Route 53 Resolver query logging (→ S3)
+│       ├── attack.tf        # (1) trigger:     attack Lambda drives the box via SSM (DGA beacon + TXT tunnelling)
+│       ├── detect.tf        # (2) detect:      scheduled Athena hunter Lambda + GuardDuty→EventBridge
+│       ├── prevent.tf       # (2) prevent:     optional DNS Firewall rule group (BLOCK the demo domains)
+│       └── investigate.tf   # (3) investigate: Glue table over Resolver logs + saved Athena queries
 └── scripts/
     └── simulate-attack.sh   # fire a scenario's attack Lambda on demand, N times (see "Re-run the attack")
 ```
 
 Every scenario module follows the same shape: **trigger the attack · detect it · investigate
-it** (with an optional **respond** step). Scenario 1 is the reference the later planes (Network
-/ DNS / Web / Storage) copy.
+it** (with an optional **respond**/**prevent** step). Scenario 1 is the reference the later
+planes (Network / DNS / Web / Storage) copy.
 
 ## Scenario 1 — Account Takeover (control plane / CloudTrail)
 
@@ -199,6 +205,86 @@ reset needs `ec2:ModifyInstanceAttribute` + `ec2:DescribeInstances` on your call
 > essentially no legitimate reason for your instance's role to be driving the AWS API from
 > someone's laptop.
 
+## Scenario 3 — DNS Exfil (DNS plane / Route 53 Resolver query logs)
+
+An implant wakes up on a box in your VPC and does something quiet before it does anything
+loud: it starts resolving names. First a rotating set of pseudo-random domains to find its
+command-and-control server (a **DGA `NXDOMAIN` storm**), then long, high-entropy subdomains to
+smuggle data out one lookup at a time (**DNS tunnelling**). This is exactly the traffic
+**Flow Logs can't help with** — DNS to the Amazon resolver is excluded from Flow Logs, and even
+where it isn't, Flow Logs only see *"something talked on port 53,"* never the **name**. The
+name is the whole investigation, and **Route 53 Resolver query logs** capture it.
+
+This scenario is **off by default** (it stands up a VPC + a `t3.micro`, like Scenario 2).
+Turn it on:
+
+```hcl
+# terraform.tfvars
+scenario_03_enabled = true
+auto_fire           = true
+enable_guardduty    = false   # the default; true only on a paid sandbox
+```
+
+On apply the module stands up a VPC with a public subnet and one EC2 instance (**IMDSv2
+enforced**), enables **Route 53 Resolver query logging** on the VPC delivering to the shared S3
+log bucket, and drives the box via `ssm:SendCommand` to beacon and tunnel over DNS.
+
+> [!NOTE]
+> **The one design quirk of this plane.** Unlike Flow Logs, which fan out to both CloudWatch
+> (alarms) and S3 (Athena), **a VPC can have only one Resolver query-logging destination.** This
+> demo sends query logs to **S3**, so there's no CloudWatch stream to hang a metric-filter alarm
+> on. Instead the always-on detector is a **scheduled hunter Lambda**: an EventBridge rule runs
+> it every 5 minutes, it queries the last window of Resolver logs in Athena for the
+> tunnelling/beacon signature, and publishes to SNS on a hit. That's the departure from
+> Scenarios 1 & 2 — DNS abuse is a *pattern over a window*, which a raw metric filter reads
+> poorly. (Prefer real-time CloudWatch alarms? Point the config at CloudWatch Logs instead and
+> query with Logs Insights — a genuine trade, not a free lunch.)
+
+### Investigate — "what is this box asking for?"
+
+Open the Athena workgroup and run the saved queries:
+
+| Query | Answers |
+|---|---|
+| `s03-01-dns-tunnelling` | Long, high-entropy first labels on `TXT`/`NULL` pointed at one domain — data leaving, one query at a time. |
+| `s03-02-dga-beacon-nxdomain` | The DGA beacon — one parent domain with an outsized share of `NXDOMAIN` responses. |
+| `s03-03-instance-dns-timeline` | Every lookup from the compromised box over time — line it up with the hunter's alert. |
+
+### Re-run the attack
+
+Same helper script, pointed at scenario 3 with `-s 3`:
+
+```bash
+./scripts/simulate-attack.sh -s 3                 # fire once
+./scripts/simulate-attack.sh -s 3 -n 5 -i 60      # fire 5 times, 60s apart
+```
+
+There's no automated responder for this plane, so (unlike Scenarios 1 & 2) there's nothing to
+reset between runs. After firing, the scheduled hunter catches the pattern on its next pass.
+
+### Detect vs prevent — the DNS Firewall toggle
+
+Setting `enable_dns_firewall = true` also stands up a **Route 53 Resolver DNS Firewall** rule
+group that **BLOCKs** the demo beacon/tunnel domains — the *prevent* half of the same
+detect-versus-prevent split as CloudTrail log-file validation in Part 2. A blocked lookup is
+**still logged** (with `firewall_rule_action = BLOCK`), so the hunter and the `s03-*` queries
+keep working either way; the difference is the query is now refused at the resolver instead of
+merely observed.
+
+> [!NOTE]
+> **The caveat that quietly defeats all of this.** The query logs, the hunter, the GuardDuty
+> findings, and DNS Firewall all depend on DNS going through the **Amazon-provided resolver**. A
+> workload pointed at an external resolver (`8.8.8.8`) or using DNS-over-HTTPS bypasses every one
+> of them in a single move. The control that makes this plane trustworthy is a boring one: force
+> outbound DNS through the Route 53 resolver, and block egress on port 53 and DoH endpoints, so
+> nothing can route around your visibility.
+
+> [!NOTE]
+> **The findings to know:** `Backdoor:EC2/C&CActivity.B!DNS`, `Trojan:EC2/DGADomainRequest.C`,
+> and `Trojan:EC2/DNSDataExfiltration`. GuardDuty analyses DNS through the Amazon resolver
+> itself, so with `enable_guardduty = true` the attack emits a sample of each to drive the
+> EventBridge → SNS path.
+
 ## Teardown
 
 ```bash
@@ -206,11 +292,12 @@ terraform destroy
 ```
 
 > [!NOTE]
-> **Scenario 2 tears down a VPC**, and VPCs are fussy to delete while anything is still attached.
-> Terraform orders it correctly (Flow Logs, the ENI, and the instance go before the VPC), but if a
-> destroy ever hangs on the VPC, a lingering ENI is almost always the culprit. The attack itself
-> creates no out-of-band AWS resources (only network traffic + an IMDS read), so — unlike
-> scenario 1 — there is no cleanup Lambda to run.
+> **Scenarios 2 and 3 tear down a VPC**, and VPCs are fussy to delete while anything is still
+> attached. Terraform orders it correctly (Flow Logs / the Resolver query-log association, the
+> ENI, and the instance go before the VPC), but if a destroy ever hangs on the VPC, a lingering
+> ENI or an in-flight Resolver query-log association is the usual culprit. Neither attack creates
+> out-of-band AWS resources (only network/DNS traffic + an IMDS read), so — unlike scenario 1 —
+> there is no cleanup Lambda to run for them.
 
 A **destroy-time provisioner** invokes a cleanup Lambda that deletes the backdoor IAM
 user(s) the attack created out-of-band (Terraform can't track them). This step shells out
@@ -235,6 +322,8 @@ the log bucket so teardown doesn't choke on the objects CloudTrail wrote.
 | `enable_guardduty` | `false` | Stand up the GuardDuty detector + its EventBridge→SNS/quarantine wiring. Off by default because **GuardDuty is not on the AWS Free Tier**. See the note below. |
 | `scenario_01_enabled` | `true` | Deploy Scenario 1 (account takeover / control plane). Cheap — no compute — so on by default. |
 | `scenario_02_enabled` | `false` | Deploy Scenario 2 (compromised workload / network plane). Off by default because it stands up a VPC + a `t3.micro` EC2 instance (small ongoing cost). |
+| `scenario_03_enabled` | `false` | Deploy Scenario 3 (DNS exfil / DNS plane). Off by default because it stands up a VPC + a `t3.micro` EC2 instance + Route 53 Resolver query logging (small ongoing cost). |
+| `enable_dns_firewall` | `false` | Scenario 3 only: also stand up the Route 53 Resolver DNS Firewall "prevent" control (BLOCK the demo beacon/tunnel domains). Off by default so the demo is detect-only. |
 
 > [!NOTE]
 > **GuardDuty and the Free Tier.** GuardDuty is a paid service, so `enable_guardduty`

@@ -60,6 +60,28 @@ output "scenario_02_alarm_names" {
   value       = one(module.scenario_02[*].alarm_names)
 }
 
+# --- Scenario 3 (DNS exfil / DNS plane) --------------------------------------
+
+output "scenario_03_instance_id" {
+  description = "Scenario 3: the DNS-noisy EC2 instance. null when scenario_03_enabled = false."
+  value       = one(module.scenario_03[*].instance_id)
+}
+
+output "scenario_03_attack_function_name" {
+  description = "Scenario 3 attack Lambda. Invoke it (e.g. via simulate-attack.sh -s 3) to re-run the scenario on demand."
+  value       = one(module.scenario_03[*].attack_function_name)
+}
+
+output "scenario_03_hunter_function_name" {
+  description = "Scenario 3: the scheduled DNS hunter Lambda. Invoke it by hand to run the beacon/tunnelling hunt immediately."
+  value       = one(module.scenario_03[*].hunter_function_name)
+}
+
+output "scenario_03_resolver_query_logs_table" {
+  description = "Scenario 3: Glue table of Route 53 Resolver query logs to query in Athena."
+  value       = one(module.scenario_03[*].resolver_query_logs_table)
+}
+
 output "region" {
   description = "Region the estate is deployed in (where you invoke the attack Lambda)."
   value       = var.region
