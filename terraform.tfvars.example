@@ -65,3 +65,10 @@ scenario_03_enabled = false
 # is detect-only. A blocked lookup is still logged, so the hunter/queries keep
 # working either way - the point is the query is now refused, not just observed.
 enable_dns_firewall = false
+
+# Scenario 4 (web attack / web plane) is OFF by default because it stands up a
+# public Application Load Balancer + a WAF web ACL, which both bill while they're
+# up. This is the PRICIEST scenario in the series - turn it on to exercise the
+# WAF-blocks-in-real-time loop, and tear it down (scenario_04_enabled = false and
+# re-apply, or terraform destroy) as soon as you're done.
+scenario_04_enabled = false

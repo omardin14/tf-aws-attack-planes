@@ -51,3 +51,9 @@ variable "enable_dns_firewall" {
   type        = bool
   default     = false
 }
+
+variable "scenario_04_enabled" {
+  description = "Deploy Scenario 4 (web attack / web plane). Off by default because it stands up a public ALB + a WAF web ACL, which both bill while up - this is the priciest scenario, so tear it down when you're done."
+  type        = bool
+  default     = false
+}

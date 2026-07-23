@@ -165,7 +165,30 @@ data "aws_iam_policy_document" "trail_bucket" {
       values   = [local.account_id]
     }
   }
+
+  # ALB access logs (Scenario 4, web plane) deliver to this same bucket under
+  # alb-access-logs/AWSLogs/<acct>/elasticloadbalancing/<region>/... ALB access-
+  # log delivery is NOT the delivery.logs.amazonaws.com principal the flow/
+  # resolver logs use: in regions launched before Aug 2022 (the demo's us-east-1
+  # default and the eu-west-1 sandbox both qualify) S3 delivery is performed by
+  # the regional ELB service account, so we grant PutObject to that account root
+  # (looked up via aws_elb_service_account - no hard-coded account id). Left
+  # unconditional beyond the write prefix: harmless when Scenario 4 isn't
+  # deployed, and a bucket can carry only ONE policy.
+  statement {
+    sid    = "AWSALBAccessLogsWrite"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = [data.aws_elb_service_account.main.arn]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.logs.arn}/alb-access-logs/AWSLogs/${local.account_id}/*"]
+  }
 }
+
+# The regional ELB service account that writes ALB access logs to S3 (Scenario 4).
+data "aws_elb_service_account" "main" {}
 
 resource "aws_s3_bucket_policy" "trail" {
   bucket = aws_s3_bucket.logs.id
