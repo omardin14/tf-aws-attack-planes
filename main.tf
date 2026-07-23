@@ -94,3 +94,25 @@ module "scenario_03" {
 
   depends_on = [module.foundation]
 }
+
+module "scenario_04" {
+  source = "./modules/scenario-04-web-attack"
+  count  = var.scenario_04_enabled ? 1 : 0
+
+  name_prefix = var.name_prefix
+  auto_fire   = var.auto_fire
+
+  # Wiring from the shared foundation. Scenario 4 delivers ALB access logs to the
+  # shared bucket (validated at apply, when the ALB writes its test object), so -
+  # like Scenario 3 - the whole module is sequenced AFTER the foundation (bucket +
+  # its policy) via depends_on. No GuardDuty here: it doesn't read WAF/ALB logs.
+  account_id            = module.foundation.account_id
+  region                = var.region
+  log_bucket_id         = module.foundation.log_bucket_id
+  log_bucket_arn        = module.foundation.log_bucket_arn
+  glue_database_name    = module.foundation.glue_database_name
+  athena_workgroup_name = module.foundation.athena_workgroup_name
+  sns_topic_arn         = module.foundation.sns_topic_arn
+
+  depends_on = [module.foundation]
+}

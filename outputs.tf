@@ -82,6 +82,33 @@ output "scenario_03_resolver_query_logs_table" {
   value       = one(module.scenario_03[*].resolver_query_logs_table)
 }
 
+# --- Scenario 4 (web attack / web plane) -------------------------------------
+
+output "scenario_04_alb_dns_name" {
+  description = "Scenario 4: public DNS name of the target ALB. null when scenario_04_enabled = false."
+  value       = one(module.scenario_04[*].alb_dns_name)
+}
+
+output "scenario_04_attack_function_name" {
+  description = "Scenario 4 attack Lambda. Invoke it (e.g. via simulate-attack.sh -s 4) to re-run the scenario on demand."
+  value       = one(module.scenario_04[*].attack_function_name)
+}
+
+output "scenario_04_waf_web_acl_arn" {
+  description = "Scenario 4: ARN of the WAF web ACL associated with the ALB."
+  value       = one(module.scenario_04[*].waf_web_acl_arn)
+}
+
+output "scenario_04_alb_access_logs_table" {
+  description = "Scenario 4: Glue table of ALB access logs to query in Athena."
+  value       = one(module.scenario_04[*].alb_access_logs_table)
+}
+
+output "scenario_04_alarm_names" {
+  description = "Scenario 4: the WAF-blocked-requests metric-filter alarm."
+  value       = one(module.scenario_04[*].alarm_names)
+}
+
 output "region" {
   description = "Region the estate is deployed in (where you invoke the attack Lambda)."
   value       = var.region

@@ -26,6 +26,12 @@
 #     tunnelling in Route 53 Resolver query logs. There is no automated responder
 #     for this plane, so there is nothing to reset before a run.
 #
+#   Scenario 4 (web attack / web plane):
+#     Makes outbound HTTP to the public ALB -> SQLi payloads, a request burst, and
+#     404-path scanning across the WAF + ALB logs. WAF blocks the attack in real
+#     time (the response is built into the control), so there is no responder and
+#     nothing to reset before a run.
+#
 # Pass --no-reset to skip the reset and observe the quarantined/isolated state.
 #
 # By default it discovers the function name and region from `terraform output`,
@@ -38,7 +44,7 @@
 #   ./scripts/simulate-attack.sh [options]
 #
 # Options:
-#   -s, --scenario N           Scenario to fire: 1, 2, or 3 (default: 1)
+#   -s, --scenario N           Scenario to fire: 1, 2, 3, or 4 (default: 1)
 #   -f, --function-name NAME   Attack Lambda to invoke (default: from terraform output)
 #   -p, --name-prefix PREFIX   Derive the name (matches var.name_prefix)
 #   -r, --region REGION        AWS region (default: terraform output region, else $AWS_REGION)
@@ -131,7 +137,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "$SCENARIO" == "1" || "$SCENARIO" == "2" || "$SCENARIO" == "3" ]] || die "--scenario must be 1, 2, or 3"
+[[ "$SCENARIO" == "1" || "$SCENARIO" == "2" || "$SCENARIO" == "3" || "$SCENARIO" == "4" ]] || die "--scenario must be 1, 2, 3, or 4"
 [[ "$COUNT" =~ ^[0-9]+$ && "$COUNT" -ge 1 ]] || die "--count must be a positive integer"
 [[ "$INTERVAL" =~ ^[0-9]+$ ]] || die "--interval must be a non-negative integer"
 
@@ -149,9 +155,12 @@ if [[ "$SCENARIO" == "1" ]]; then
 elif [[ "$SCENARIO" == "2" ]]; then
   FN_OUTPUT="scenario_02_attack_function_name"
   FN_SUFFIX="-s2-attack"
-else
+elif [[ "$SCENARIO" == "3" ]]; then
   FN_OUTPUT="scenario_03_attack_function_name"
   FN_SUFFIX="-s3-attack"
+else
+  FN_OUTPUT="scenario_04_attack_function_name"
+  FN_SUFFIX="-s4-attack"
 fi
 
 # An explicit --name-prefix wins over discovery.
@@ -245,15 +254,15 @@ reset_before_run() {
   elif [[ "$SCENARIO" == "2" ]]; then
     reset_isolation
   fi
-  # Scenario 3 has no automated responder, so there is nothing to reset.
+  # Scenarios 3 and 4 have no automated responder, so there is nothing to reset.
 }
 
 # --- fire ----------------------------------------------------------------------
 echo ">> scenario      : $SCENARIO"
 echo ">> attack Lambda : $FUNCTION_NAME"
 echo ">> region        : $REGION"
-if [[ "$SCENARIO" == "3" ]]; then
-  echo ">> reset         : n/a (scenario 3 has no responder)"
+if [[ "$SCENARIO" == "3" || "$SCENARIO" == "4" ]]; then
+  echo ">> reset         : n/a (scenario $SCENARIO has no responder)"
 elif [[ "$RESET" -eq 1 ]]; then
   if [[ "$SCENARIO" == "1" ]]; then
     echo ">> reset         : un-quarantine ${LEAKED_USER:+($LEAKED_USER) }before each run"
@@ -307,9 +316,12 @@ if [[ "$SCENARIO" == "1" ]]; then
   echo "Done. Give CloudTrail ~1-2 min to deliver to CloudWatch Logs, then investigate:"
 elif [[ "$SCENARIO" == "2" ]]; then
   echo "Done. Give VPC Flow Logs ~1-2 min to deliver, then investigate:"
-else
+elif [[ "$SCENARIO" == "3" ]]; then
   echo "Done. Give Route 53 Resolver query logs a few min to deliver (the scheduled hunter"
   echo "catches the pattern on its next pass), then investigate:"
+else
+  echo "Done. The WAF-blocks alarm trips within ~1 min; give ALB access logs ~5 min to"
+  echo "deliver to S3, then investigate:"
 fi
 ATHENA_URL="$(tf_output athena_console_url)"
 if [[ -n "$ATHENA_URL" ]]; then

@@ -34,12 +34,17 @@ investigate it — so you can run the whole "what is this user doing?" loop your
 │   │   ├── detect.tf        # (2) detect:      egress-bytes metric-filter alarm + GuardDuty→EventBridge
 │   │   ├── respond.tf       # (2) respond:     isolation Lambda (swap to a no-rules SG)
 │   │   └── investigate.tf   # (3) investigate: Glue table over Flow Logs + saved Athena queries
-│   └── scenario-03-dns-exfil/             # the DNS-plane beacon/tunnelling attack
-│       ├── network.tf       # (0) target:      VPC + IMDSv2 EC2 + Route 53 Resolver query logging (→ S3)
-│       ├── attack.tf        # (1) trigger:     attack Lambda drives the box via SSM (DGA beacon + TXT tunnelling)
-│       ├── detect.tf        # (2) detect:      scheduled Athena hunter Lambda + GuardDuty→EventBridge
-│       ├── prevent.tf       # (2) prevent:     optional DNS Firewall rule group (BLOCK the demo domains)
-│       └── investigate.tf   # (3) investigate: Glue table over Resolver logs + saved Athena queries
+│   ├── scenario-03-dns-exfil/             # the DNS-plane beacon/tunnelling attack
+│   │   ├── network.tf       # (0) target:      VPC + IMDSv2 EC2 + Route 53 Resolver query logging (→ S3)
+│   │   ├── attack.tf        # (1) trigger:     attack Lambda drives the box via SSM (DGA beacon + TXT tunnelling)
+│   │   ├── detect.tf        # (2) detect:      scheduled Athena hunter Lambda + GuardDuty→EventBridge
+│   │   ├── prevent.tf       # (2) prevent:     optional DNS Firewall rule group (BLOCK the demo domains)
+│   │   └── investigate.tf   # (3) investigate: Glue table over Resolver logs + saved Athena queries
+│   └── scenario-04-web-attack/            # the web-plane WAF + ALB attack
+│       ├── network.tf       # (0) target:      public ALB (fixed-response, no EC2) + WAFv2 web ACL (→ WAF logs to CWL, ALB logs to S3)
+│       ├── attack.tf        # (1) trigger:     attack Lambda hits the ALB over HTTP (SQLi + burst + 404 scanning)
+│       ├── detect.tf        # (2) detect:      WAF-blocked-requests metric-filter alarm (WAF blocks in real time)
+│       └── investigate.tf   # (3) investigate: Glue table over ALB logs + Athena query + saved WAF Logs Insights query
 └── scripts/
     └── simulate-attack.sh   # fire a scenario's attack Lambda on demand, N times (see "Re-run the attack")
 ```
@@ -285,6 +290,82 @@ merely observed.
 > itself, so with `enable_guardduty = true` the attack emits a sample of each to drive the
 > EventBridge → SNS path.
 
+## Scenario 4 — Web Attack (web plane / WAF + ALB access logs)
+
+Every earlier scenario started with a credential or a foothold — the attacker was already
+inside. This one is different: no credentials, no box, no access. Just your public URL and
+bad vibes. A request to `/login` isn't an AWS API call, so **CloudTrail is blind to all of
+it** — this is application traffic. The logs that see it are **WAF** (what an IP *tried*:
+every evaluated request, the matched rule, ALLOW/BLOCK/COUNT) and **ALB access logs** (what
+actually *reached* the app: the status-code ground truth).
+
+This scenario is **off by default** and is the **priciest** in the series — it stands up a
+public ALB **and** a WAF web ACL, both of which bill while they're up. Turn it on:
+
+```hcl
+# terraform.tfvars
+scenario_04_enabled = true
+auto_fire           = true
+```
+
+On apply the module stands up a deliberately-exposed web endpoint — **no compute required**.
+A public ALB with a fixed-response listener (the "app") is fronted by a regional **WAFv2**
+web ACL carrying the AWS-managed **Common** and **SQLi** rule groups plus a **rate-based
+rule**. WAF logs stream to CloudWatch Logs (for the alarm); ALB access logs go to the shared
+S3 bucket (for Athena). The attack Lambda then hits the ALB's public URL with the three
+signatures — SQLi-shaped query strings (→ SQLi rule → **BLOCK**), a request burst (→ rate
+rule), and a spray of 404-path scanning — WAF blocks the malicious requests **in real time**,
+the `atkplane-waf-blocks` alarm trips, and SNS emails you.
+
+> [!NOTE]
+> **The response is built into the control.** WAF blocks the attack *as it happens*, so —
+> unlike the earlier planes — there's no separate quarantine/isolation step to bolt on. The
+> alarm's job here isn't to stop anything (WAF already did); it's to **tell a human it
+> happened**. And **GuardDuty doesn't feature** in this plane — it doesn't read WAF or ALB
+> logs, so `enable_guardduty` has nothing to do here.
+
+> [!NOTE]
+> **The attacker IP is the Lambda's.** Because the attack originates from a Lambda, the source
+> IP in your logs is the Lambda's egress address, not a spoofed internet IP — fine for seeing
+> exactly how the rules and logs behave. Relatedly: behind a proxy (CloudFront/any CDN) an ALB
+> logs the *proxy's* IP as the source; the real client is in the `X-Forwarded-For` header (in
+> the ALB log). Know that before you spend an hour chasing your own CDN edge node.
+
+### Investigate — two logs, two questions
+
+This is the plane where you reach for two tools that answer genuinely different questions.
+
+**"What did this IP *try*?"** lives in the WAF logs, in CloudWatch — a saved **Logs Insights**
+query (`atkplane/s04-waf-blocks-by-ip`), because that's where WAF writes. It groups blocked
+requests by client IP and the rule that caught them: SQLi group = an injection attempt dying
+at the edge; rate rule = someone who tried to flood you and got throttled.
+
+**"What actually *reached* the app?"** lives in the ALB logs, in S3 — an Athena query, because
+that's the status-code ground truth. Open the Athena workgroup and run:
+
+| Query | Answers |
+|---|---|
+| `s04-01-alb-status-by-ip` | The response-code shape per IP — a wall of one status from one IP is the intent. 403 = WAF held the line; 404 = recon got through; 200 = it's working (and that's the problem). |
+| `s04-02-alb-scanned-paths` | The paths that were probed but not blocked — a wall of 404s across many URLs is reconnaissance, and now you know exactly which paths to go harden. |
+
+### Re-run the attack
+
+Same helper script, pointed at scenario 4 with `-s 4`:
+
+```bash
+./scripts/simulate-attack.sh -s 4                 # fire once
+./scripts/simulate-attack.sh -s 4 -n 5 -i 60      # fire 5 times, 60s apart
+```
+
+WAF blocks in real time, so (like Scenario 3) there's no responder and nothing to reset
+between runs. The WAF-blocks alarm trips within ~1 min; ALB access logs take ~5 min to land
+in S3 before the Athena queries have data.
+
+> [!NOTE]
+> **This is the one to tear down promptly.** The ALB and the WAF web ACL both bill while
+> they're up, so don't leave it running overnight for the sake of a screenshot —
+> `scenario_04_enabled = false` and re-apply, or `terraform destroy`.
+
 ## Teardown
 
 ```bash
@@ -324,6 +405,7 @@ the log bucket so teardown doesn't choke on the objects CloudTrail wrote.
 | `scenario_02_enabled` | `false` | Deploy Scenario 2 (compromised workload / network plane). Off by default because it stands up a VPC + a `t3.micro` EC2 instance (small ongoing cost). |
 | `scenario_03_enabled` | `false` | Deploy Scenario 3 (DNS exfil / DNS plane). Off by default because it stands up a VPC + a `t3.micro` EC2 instance + Route 53 Resolver query logging (small ongoing cost). |
 | `enable_dns_firewall` | `false` | Scenario 3 only: also stand up the Route 53 Resolver DNS Firewall "prevent" control (BLOCK the demo beacon/tunnel domains). Off by default so the demo is detect-only. |
+| `scenario_04_enabled` | `false` | Deploy Scenario 4 (web attack / web plane). Off by default because it stands up a public ALB + a WAF web ACL — the **priciest** scenario, so tear it down when done. |
 
 > [!NOTE]
 > **GuardDuty and the Free Tier.** GuardDuty is a paid service, so `enable_guardduty`
